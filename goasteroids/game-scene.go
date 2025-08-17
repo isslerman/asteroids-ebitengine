@@ -41,6 +41,9 @@ type GameScene struct {
 	audioContext         *audio.Context
 	thrustPlayer         *audio.Player
 	exhaust              *Exhaust
+	laserOnePlayer       *audio.Player
+	laserTwoPlayer       *audio.Player
+	laserThreePlayer     *audio.Player
 }
 
 // NewGameScene is a factory method for producing a new game. It's called once,
@@ -69,6 +72,15 @@ func NewGameScene() *GameScene {
 	g.audioContext = audio.NewContext(48000)
 	thrustPlayer, _ := g.audioContext.NewPlayer(assets.ThurstSound)
 	g.thrustPlayer = thrustPlayer
+
+	laserOnePlayer, _ := g.audioContext.NewPlayer(assets.LaserOneSound)
+	g.laserOnePlayer = laserOnePlayer
+
+	laserTwoPlayer, _ := g.audioContext.NewPlayer(assets.LaserTwoSound)
+	g.laserTwoPlayer = laserTwoPlayer
+
+	laserThreePlayer, _ := g.audioContext.NewPlayer(assets.LaserThreeSound)
+	g.laserThreePlayer = laserThreePlayer
 
 	return g
 }

@@ -148,6 +148,24 @@ func (p *Player) fireLasers() {
 				laser := NewLaser(spawnPos, p.rotation, p.game.laserCount, p.game)
 				p.game.lasers[p.game.laserCount] = laser
 				p.game.space.Add(laser.laserObj)
+
+				switch shootsFired {
+				case 1:
+					if !p.game.laserOnePlayer.IsPlaying() {
+						_ = p.game.laserOnePlayer.Rewind()
+						p.game.laserOnePlayer.Play()
+					}
+				case 2:
+					if !p.game.laserTwoPlayer.IsPlaying() {
+						_ = p.game.laserTwoPlayer.Rewind()
+						p.game.laserTwoPlayer.Play()
+					}
+				case 3:
+					if !p.game.laserThreePlayer.IsPlaying() {
+						_ = p.game.laserThreePlayer.Rewind()
+						p.game.laserThreePlayer.Play()
+					}
+				}
 			} else {
 				p.burstCoolDown.Reset()
 				shootsFired = 0
