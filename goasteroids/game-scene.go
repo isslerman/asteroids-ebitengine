@@ -18,6 +18,7 @@ const (
 	meteorSpeedUpAmount  = 0.1                     // How much do we speed a meteor up when it's timer runs out.
 	meteorSpeedUpTime    = 1000 * time.Millisecond // How long to wait to speed up meteors.
 	cleanUpExplosionTime = 200 * time.Millisecond
+	baseBeatWaitTime     = 1600
 )
 
 // GameScene is the overall type for a game scene (e.g. TitleScene, GameScene, etc.).
@@ -45,6 +46,11 @@ type GameScene struct {
 	laserTwoPlayer       *audio.Player
 	laserThreePlayer     *audio.Player
 	explosionPlayer      *audio.Player
+	beatOnePlayer        *audio.Player
+	beatTwoPlayer        *audio.Player
+	beatTimer            *Timer
+	beatWaitTime         int
+	playBeatOne          bool
 }
 
 // NewGameScene is a factory method for producing a new game. It's called once,
@@ -63,6 +69,8 @@ func NewGameScene() *GameScene {
 		explosionSprite:      assets.ExplosionSprite,
 		explosionSmallSprite: assets.ExplosionSmallSprite,
 		cleanUpTimer:         NewTimer(cleanUpExplosionTime),
+		beatTimer:            NewTimer(2 * time.Second),
+		beatWaitTime:         baseBeatWaitTime,
 	}
 	g.player = NewPlayer(g)
 	g.space.Add(g.player.playerObj)
@@ -85,6 +93,11 @@ func NewGameScene() *GameScene {
 
 	explosionPlayer, _ := g.audioContext.NewPlayer(assets.ExplosionSound)
 	g.explosionPlayer = explosionPlayer
+
+	beatOnePlayer, _ := g.audioContext.NewPlayer(assets.BeatOneSound)
+	beatTwoPlayer, _ := g.audioContext.NewPlayer(assets.BeatTwoSound)
+	g.beatOnePlayer = beatOnePlayer
+	g.beatTwoPlayer = beatTwoPlayer
 
 	return g
 }
@@ -117,6 +130,8 @@ func (g *GameScene) Update(state *State) error {
 
 	g.cleanUpMeteorsAndAliens()
 
+	g.beatSound()
+
 	return nil
 }
 
@@ -141,6 +156,28 @@ func (g *GameScene) Draw(screen *ebiten.Image) {
 // Layout is necessary to satisfy interface requirements from ebiten.
 func (g *GameScene) Layout(outsideWidth, outsideHeight int) (ScreeWidth, ScreenHeight int) {
 	return outsideWidth, outsideHeight
+}
+
+func (g *GameScene) beatSound() {
+	g.beatTimer.Update()
+	if g.beatTimer.IsReady() {
+		if g.playBeatOne {
+			_ = g.beatOnePlayer.Rewind()
+			g.beatOnePlayer.Play()
+			g.beatTimer.Reset()
+		} else {
+			_ = g.beatTwoPlayer.Rewind()
+			g.beatTwoPlayer.Play()
+			g.beatTimer.Reset()
+		}
+		g.playBeatOne = !g.playBeatOne
+
+		// speed up the timer
+		if g.beatWaitTime > 400 {
+			g.beatWaitTime = g.beatWaitTime - 25
+			g.beatTimer = NewTimer(time.Millisecond * time.Duration(g.beatWaitTime))
+		}
+	}
 }
 
 func (g *GameScene) updateExhaust() {
