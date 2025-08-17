@@ -19,6 +19,7 @@ const (
 	meteorSpeedUpTime    = 1000 * time.Millisecond // How long to wait to speed up meteors.
 	cleanUpExplosionTime = 200 * time.Millisecond
 	baseBeatWaitTime     = 1600
+	numberOfStars        = 1000
 )
 
 // GameScene is the overall type for a game scene (e.g. TitleScene, GameScene, etc.).
@@ -51,6 +52,7 @@ type GameScene struct {
 	beatTimer            *Timer
 	beatWaitTime         int
 	playBeatOne          bool
+	stars                []*Star
 }
 
 // NewGameScene is a factory method for producing a new game. It's called once,
@@ -74,6 +76,7 @@ func NewGameScene() *GameScene {
 	}
 	g.player = NewPlayer(g)
 	g.space.Add(g.player.playerObj)
+	g.stars = GenerateStars(numberOfStars)
 
 	g.explosionFrames = assets.Explosion
 
@@ -137,6 +140,11 @@ func (g *GameScene) Update(state *State) error {
 
 // Draw draws all game scene elements to the screen. It's called once per frame.
 func (g *GameScene) Draw(screen *ebiten.Image) {
+	// Draw stars.
+	for _, s := range g.stars {
+		s.Draw(screen)
+	}
+
 	g.player.Draw(screen)
 
 	if g.exhaust != nil {
@@ -324,4 +332,5 @@ func (g *GameScene) Reset() {
 	g.exhaust = nil
 	g.space.RemoveAll()
 	g.space.Add(g.player.playerObj)
+	g.stars = GenerateStars(numberOfStars)
 }
