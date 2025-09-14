@@ -18,6 +18,8 @@ var assets embed.FS
 
 var PlayerSprite = mustLoadImage("images/player.png")
 var TitleFont = mustLoadFontFace("fonts/title.ttf")
+var ScoreFont = mustLoadFontFace("fonts/score.ttf")
+var LevelFont = mustLoadFontFace("fonts/score.ttf")
 var MeteorSprites = mustLoadImages("images/meteors/*.png")
 var MeteorSpritesSmall = mustLoadImages("images/meteors-small/*.png")
 var LaserSprite = mustLoadImage("images/laser.png")
@@ -32,6 +34,7 @@ var LaserThreeSound = mustLoadOggVorbis("audio/fire.ogg")
 var ExplosionSound = mustLoadOggVorbis("audio/explosion.ogg")
 var BeatOneSound = mustLoadOggVorbis("audio/beat1.ogg")
 var BeatTwoSound = mustLoadOggVorbis("audio/beat2.ogg")
+var LifeIndicator = mustLoadImage("images/life-indicator.png")
 
 func mustLoadOggVorbis(name string) *vorbis.Stream {
 	f, err := assets.ReadFile(name)

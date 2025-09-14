@@ -1,6 +1,8 @@
 package goasteroids
 
 import (
+	"fmt"
+	"image/color"
 	"log"
 	"math/rand"
 	"time"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/audio"
+	"github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/solarlune/resolv"
 )
 
@@ -35,6 +38,7 @@ type GameScene struct {
 	lasers               map[int]*Laser
 	laserCount           int
 	score                int
+	highScore            int
 	explosionSmallSprite *ebiten.Image
 	explosionSprite      *ebiten.Image
 	explosionFrames      []*ebiten.Image
@@ -53,6 +57,7 @@ type GameScene struct {
 	beatWaitTime         int
 	playBeatOne          bool
 	stars                []*Star
+	currentLevel         int // The current level the player is
 }
 
 // NewGameScene is a factory method for producing a new game. It's called once,
@@ -73,6 +78,7 @@ func NewGameScene() *GameScene {
 		cleanUpTimer:         NewTimer(cleanUpExplosionTime),
 		beatTimer:            NewTimer(2 * time.Second),
 		beatWaitTime:         baseBeatWaitTime,
+		currentLevel:         1,
 	}
 	g.player = NewPlayer(g)
 	g.space.Add(g.player.playerObj)
@@ -159,6 +165,61 @@ func (g *GameScene) Draw(screen *ebiten.Image) {
 	for _, l := range g.lasers {
 		l.Draw(screen)
 	}
+
+	// Draw life indicators
+	if len(g.player.lifeIndicators) > 0 {
+		for _, x := range g.player.lifeIndicators {
+			x.Draw(screen)
+		}
+	}
+
+	// update and draw score
+	textToDraw := fmt.Sprintf("%06d", g.score)
+	op := &text.DrawOptions{
+		LayoutOptions: text.LayoutOptions{
+			PrimaryAlign: text.AlignCenter,
+		},
+	}
+	op.ColorScale.ScaleWithColor(color.White)
+	op.GeoM.Translate(ScreenWidth/2, 40)
+	text.Draw(screen, textToDraw, &text.GoTextFace{
+		Source: assets.ScoreFont,
+		Size:   24,
+	}, op)
+
+	// update and draw high score
+	if g.score >= g.highScore {
+		g.highScore = g.score
+	}
+
+	// update and draw high score
+	textToDraw = fmt.Sprintf("HIGH SCORE %06d", g.highScore)
+	op = &text.DrawOptions{
+		LayoutOptions: text.LayoutOptions{
+			PrimaryAlign: text.AlignCenter,
+		},
+	}
+	op.ColorScale.ScaleWithColor(color.White)
+	op.GeoM.Translate(ScreenWidth/2, 75)
+	text.Draw(screen, textToDraw, &text.GoTextFace{
+		Source: assets.ScoreFont,
+		Size:   16,
+	}, op)
+
+	// update and draw high score
+	textToDraw = fmt.Sprintf("LEVEL %d", g.currentLevel)
+	op = &text.DrawOptions{
+		LayoutOptions: text.LayoutOptions{
+			PrimaryAlign: text.AlignCenter,
+		},
+	}
+	op.ColorScale.ScaleWithColor(color.White)
+	op.GeoM.Translate(ScreenWidth/2, ScreenHeight-40)
+	text.Draw(screen, textToDraw, &text.GoTextFace{
+		Source: assets.LevelFont,
+		Size:   16,
+	}, op)
+
 }
 
 // Layout is necessary to satisfy interface requirements from ebiten.
@@ -258,8 +319,23 @@ func (g *GameScene) isPlayerDead(state *State) {
 	if g.playerIsDead {
 		g.player.livesRemaining--
 		if g.player.livesRemaining == 0 {
+			state.SceneManager.GoToScene(&GameOverScene{
+				game:        g,
+				meteors:     make(map[int]*Meteor),
+				meteorCount: 5,
+				stars:       GenerateStars(numberOfStars),
+			})
+		} else {
+			score := g.score
+			livesRemaining := g.player.livesRemaining
+			lifeSlice := g.player.lifeIndicators[:len(g.player.lifeIndicators)-1]
+			stars := g.stars
+
 			g.Reset()
-			state.SceneManager.GoToScene(g)
+			g.player.livesRemaining = livesRemaining
+			g.score = score
+			g.player.lifeIndicators = lifeSlice
+			g.stars = stars
 		}
 	}
 }
