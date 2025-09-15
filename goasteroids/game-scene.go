@@ -38,7 +38,6 @@ type GameScene struct {
 	lasers               map[int]*Laser
 	laserCount           int
 	score                int
-	highScore            int
 	explosionSmallSprite *ebiten.Image
 	explosionSprite      *ebiten.Image
 	explosionFrames      []*ebiten.Image
@@ -188,12 +187,12 @@ func (g *GameScene) Draw(screen *ebiten.Image) {
 	}, op)
 
 	// update and draw high score
-	if g.score >= g.highScore {
-		g.highScore = g.score
+	if g.score >= highScore {
+		highScore = g.score
 	}
 
 	// update and draw high score
-	textToDraw = fmt.Sprintf("HIGH SCORE %06d", g.highScore)
+	textToDraw = fmt.Sprintf("HIGH SCORE %06d", highScore)
 	op = &text.DrawOptions{
 		LayoutOptions: text.LayoutOptions{
 			PrimaryAlign: text.AlignCenter,
@@ -269,7 +268,7 @@ func (g *GameScene) isMeteorHitByPlayerLaser() {
 						g.explosionPlayer.Play()
 					}
 				} else {
-					log.Println("hit large meteor")
+					// log.Println("hit large meteor")
 					// Large meteor
 					oldPos := m.position
 
@@ -319,6 +318,15 @@ func (g *GameScene) isPlayerDead(state *State) {
 	if g.playerIsDead {
 		g.player.livesRemaining--
 		if g.player.livesRemaining == 0 {
+
+			// New high Score?
+			if g.score > originalHighScore {
+				err := updateHighScore(g.score)
+				if err != nil {
+					log.Println(err)
+				}
+			}
+
 			state.SceneManager.GoToScene(&GameOverScene{
 				game:        g,
 				meteors:     make(map[int]*Meteor),

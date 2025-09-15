@@ -1,7 +1,6 @@
 package goasteroids
 
 import (
-	"fmt"
 	"g-asteroids/assets"
 	"math"
 	"time"
@@ -111,12 +110,12 @@ func (p *Player) Update() {
 	p.isPlayerDead()
 
 	if ebiten.IsKeyPressed(ebiten.KeyLeft) {
-		fmt.Println("left key pressed")
+		// fmt.Println("left key pressed")
 		p.rotation -= speed
 	}
 
 	if ebiten.IsKeyPressed(ebiten.KeyRight) {
-		fmt.Println("right key pressed")
+		// fmt.Println("right key pressed")
 		p.rotation += speed
 	}
 
