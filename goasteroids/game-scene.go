@@ -56,7 +56,9 @@ type GameScene struct {
 	beatWaitTime         int
 	playBeatOne          bool
 	stars                []*Star
-	currentLevel         int // The current level the player is
+	currentLevel         int           // The current level the player is
+	shield               *Shield       // The players shield
+	shieldsUpPlayer      *audio.Player // The player for the shields up
 }
 
 // NewGameScene is a factory method for producing a new game. It's called once,
@@ -107,6 +109,9 @@ func NewGameScene() *GameScene {
 	g.beatOnePlayer = beatOnePlayer
 	g.beatTwoPlayer = beatTwoPlayer
 
+	shieldsUpPlayer, _ := g.audioContext.NewPlayer(assets.ShieldSound)
+	g.shieldsUpPlayer = shieldsUpPlayer
+
 	return g
 }
 
@@ -115,6 +120,8 @@ func (g *GameScene) Update(state *State) error {
 	g.player.Update()
 
 	g.updateExhaust()
+
+	g.updateShield()
 
 	g.isPlayerDying()
 
@@ -158,6 +165,10 @@ func (g *GameScene) Draw(screen *ebiten.Image) {
 		g.exhaust.Draw(screen)
 	}
 
+	if g.shield != nil {
+		g.shield.Draw(screen)
+	}
+
 	// Draw meteors.
 	for _, m := range g.meteors {
 		m.Draw(screen)
@@ -172,6 +183,18 @@ func (g *GameScene) Draw(screen *ebiten.Image) {
 		for _, x := range g.player.lifeIndicators {
 			x.Draw(screen)
 		}
+	}
+
+	// Draw shield indicators
+	if len(g.player.shieldIndicators) > 0 {
+		for _, x := range g.player.shieldIndicators {
+			x.Draw(screen)
+		}
+	}
+
+	// Draw hyperspace indicator
+	if g.player.hyperspaceTimer == nil || g.player.hyperspaceTimer.IsReady() {
+		g.player.hyperspaceIndicator.Draw(screen)
 	}
 
 	// update and draw score
@@ -226,6 +249,12 @@ func (g *GameScene) Draw(screen *ebiten.Image) {
 // Layout is necessary to satisfy interface requirements from ebiten.
 func (g *GameScene) Layout(outsideWidth, outsideHeight int) (ScreeWidth, ScreenHeight int) {
 	return outsideWidth, outsideHeight
+}
+
+func (g *GameScene) updateShield() {
+	if g.shield != nil {
+		g.shield.Update()
+	}
 }
 
 func (g *GameScene) isLevelComplete(state *State) {
@@ -364,12 +393,16 @@ func (g *GameScene) isPlayerDead(state *State) {
 			livesRemaining := g.player.livesRemaining
 			lifeSlice := g.player.lifeIndicators[:len(g.player.lifeIndicators)-1]
 			stars := g.stars
+			shieldsRemaining := g.player.shieldsRemaining
+			shieldIndicatorSlice := g.player.shieldIndicators
 
 			g.Reset()
 			g.player.livesRemaining = livesRemaining
 			g.score = score
 			g.player.lifeIndicators = lifeSlice
 			g.stars = stars
+			g.player.shieldsRemaining = shieldsRemaining
+			g.player.shieldIndicators = shieldIndicatorSlice
 		}
 	}
 }
@@ -410,9 +443,26 @@ func (g *GameScene) isPlayerCollidingWithMeteor() {
 				break
 			} else {
 				// Bounce the meteor.
+				g.bounceMeteor(m)
 			}
 		}
 	}
+}
+
+func (g *GameScene) bounceMeteor(m *Meteor) {
+	direction := Vector{
+		X: (ScreenWidth/2 - m.position.X) * -1,
+		Y: (ScreenHeight/2 - m.position.Y) * -1,
+	}
+	normalizedDirection := direction.Normalize()
+	velocity := g.baseVelocity * 1.2
+
+	movement := Vector{
+		X: normalizedDirection.X * velocity,
+		Y: normalizedDirection.Y * velocity,
+	}
+
+	m.movement = movement
 }
 
 func (g *GameScene) cleanUpMeteorsAndAliens() {
@@ -443,4 +493,6 @@ func (g *GameScene) Reset() {
 	g.space.RemoveAll()
 	g.space.Add(g.player.playerObj)
 	g.stars = GenerateStars(numberOfStars)
+	g.player.shieldsRemaining = numberOfShields
+	g.player.isShielded = false
 }
