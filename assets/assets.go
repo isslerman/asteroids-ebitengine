@@ -39,6 +39,10 @@ var ShieldSound = mustLoadOggVorbis("audio/shield.ogg")
 var ShieldSprite = mustLoadImage("images/shield.png")
 var ShieldIndicator = mustLoadImage("images/shield-indicator.png")
 var HyperspaceIndicator = mustLoadImage("images/hyperspace.png")
+var AlienSprites = mustLoadImages("images/aliens/*.png")
+var AlienSound = mustLoadOggVorbis("audio/alien-sound.ogg")
+var AlienLaserSprite = mustLoadImage("images/red-laser.png")
+var AlienLaserSound = mustLoadOggVorbis("audio/alien-laser.ogg")
 
 func mustLoadOggVorbis(name string) *vorbis.Stream {
 	f, err := assets.ReadFile(name)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image/color"
 	"log"
+	"math"
 	"math/rand"
 	"time"
 
@@ -23,6 +24,9 @@ const (
 	cleanUpExplosionTime = 200 * time.Millisecond
 	baseBeatWaitTime     = 1600
 	numberOfStars        = 1000
+	alienAttackTime      = 3 * time.Second  // How long between alien attacks.
+	alienSpawnTime       = 12 * time.Second // How long between alien spawns.
+	baseAlienVelocity    = 0.5
 )
 
 // GameScene is the overall type for a game scene (e.g. TitleScene, GameScene, etc.).
@@ -56,9 +60,17 @@ type GameScene struct {
 	beatWaitTime         int
 	playBeatOne          bool
 	stars                []*Star
-	currentLevel         int           // The current level the player is
-	shield               *Shield       // The players shield
-	shieldsUpPlayer      *audio.Player // The player for the shields up
+	currentLevel         int                 // The current level the player is
+	shield               *Shield             // The players shield
+	shieldsUpPlayer      *audio.Player       // The player for the shields up
+	alienAttackTimer     *Timer              // The timer for allowing aliens to attack.
+	alienCount           int                 // The count of aliens. We only allow one, but might change that.
+	alienLaserCount      int                 // A count of alien lasers in play; used as index for map alienLasers.
+	alienLaserPlayer     *audio.Player       // The audio player for alien laser sounds.
+	alienLasers          map[int]*AlienLaser // A map of alien lasers currently active.
+	alienSoundPlayer     *audio.Player       // The audio player for our alien sounds.
+	alienSpawnTimer      *Timer              // The timer used to spawn aliens.
+	aliens               map[int]*Alien      // A map of aliens.
 }
 
 // NewGameScene is a factory method for producing a new game. It's called once,
@@ -80,6 +92,12 @@ func NewGameScene() *GameScene {
 		beatTimer:            NewTimer(2 * time.Second),
 		beatWaitTime:         baseBeatWaitTime,
 		currentLevel:         1,
+		aliens:               make(map[int]*Alien),
+		alienCount:           0,
+		alienLasers:          make(map[int]*AlienLaser),
+		alienLaserCount:      0,
+		alienSpawnTimer:      NewTimer(alienSpawnTime),
+		alienAttackTimer:     NewTimer(alienAttackTime),
 	}
 	g.player = NewPlayer(g)
 	g.space.Add(g.player.playerObj)
@@ -112,6 +130,13 @@ func NewGameScene() *GameScene {
 	shieldsUpPlayer, _ := g.audioContext.NewPlayer(assets.ShieldSound)
 	g.shieldsUpPlayer = shieldsUpPlayer
 
+	alienLaserPlayer, _ := g.audioContext.NewPlayer(assets.AlienLaserSound)
+	g.alienLaserPlayer = alienLaserPlayer
+
+	alienSoundPlayer, _ := g.audioContext.NewPlayer(assets.AlienSound)
+	alienSoundPlayer.SetVolume(0.5)
+	g.alienSoundPlayer = alienSoundPlayer
+
 	return g
 }
 
@@ -128,7 +153,21 @@ func (g *GameScene) Update(state *State) error {
 	g.isPlayerDead(state)
 
 	g.spawnMeteors()
+	// Spawn aliens.
+	g.spawnAliens()
 
+	// Update aliens.
+	for _, a := range g.aliens {
+		a.Update()
+	}
+
+	// Let aliens attack (and play alien sound).
+	g.letAliensAttack()
+
+	// Update alien lasers.
+	for _, al := range g.alienLasers {
+		al.Update()
+	}
 	for _, m := range g.meteors {
 		m.Update()
 	}
@@ -143,11 +182,25 @@ func (g *GameScene) Update(state *State) error {
 
 	g.isMeteorHitByPlayerLaser()
 
+	// Check for player collision with alien.
+	g.isPlayerCollidingWithAlien()
+
+	// Check for alien laser collision with player.
+	g.isPlayerHitByAlienLaser()
+
+	// Check for player laser collision with alien.
+	g.isAlienHitByPlayerLaser()
+
 	g.cleanUpMeteorsAndAliens()
 
 	g.beatSound()
 
 	g.isLevelComplete(state)
+	// Clean up offscreen aliens.
+	g.removeOffscreenAliens()
+
+	// Clean up offscreen lasers.
+	g.removeOffscreenLasers()
 
 	return nil
 }
@@ -195,6 +248,16 @@ func (g *GameScene) Draw(screen *ebiten.Image) {
 	// Draw hyperspace indicator
 	if g.player.hyperspaceTimer == nil || g.player.hyperspaceTimer.IsReady() {
 		g.player.hyperspaceIndicator.Draw(screen)
+	}
+
+	// Draw aliens.
+	for _, a := range g.aliens {
+		a.Draw(screen)
+	}
+
+	// Draw alien lasers.
+	for _, al := range g.alienLasers {
+		al.Draw(screen)
 	}
 
 	// update and draw score
@@ -249,6 +312,145 @@ func (g *GameScene) Draw(screen *ebiten.Image) {
 // Layout is necessary to satisfy interface requirements from ebiten.
 func (g *GameScene) Layout(outsideWidth, outsideHeight int) (ScreeWidth, ScreenHeight int) {
 	return outsideWidth, outsideHeight
+}
+func (g *GameScene) isPlayerCollidingWithAlien() {
+	for _, a := range g.aliens {
+		if a.alienObj.IsIntersecting(g.player.playerObj) {
+			if !a.game.player.isShielded {
+				if !a.game.explosionPlayer.IsPlaying() {
+					_ = a.game.explosionPlayer.Rewind()
+					a.game.explosionPlayer.Play()
+				}
+				a.game.player.isDying = true
+			}
+		}
+	}
+}
+
+func (g *GameScene) isPlayerHitByAlienLaser() {
+	for _, l := range g.alienLasers {
+		if l.laserObj.IsIntersecting(g.player.playerObj) {
+			if !g.player.isShielded {
+				if !g.explosionPlayer.IsPlaying() {
+					_ = g.explosionPlayer.Rewind()
+					g.explosionPlayer.Play()
+				}
+				g.player.isDying = true
+			}
+		}
+	}
+}
+
+func (g *GameScene) isAlienHitByPlayerLaser() {
+	for _, a := range g.aliens {
+		for _, l := range g.lasers {
+			if a.alienObj.IsIntersecting(l.laserObj) {
+				laserData := l.laserObj.Data().(*ObjectData)
+				delete(g.alienLasers, laserData.index)
+				g.space.Remove(l.laserObj)
+				a.sprite = g.explosionSprite
+				g.score = g.score + 50
+				if !g.explosionPlayer.IsPlaying() {
+					_ = g.explosionPlayer.Rewind()
+					g.explosionPlayer.Play()
+				}
+			}
+		}
+	}
+}
+
+func (g *GameScene) letAliensAttack() {
+	if len(g.aliens) > 0 {
+		if !g.alienSoundPlayer.IsPlaying() {
+			_ = g.alienSoundPlayer.Rewind()
+			g.alienSoundPlayer.Play()
+		}
+
+		// Update the alien attack timer.
+		g.alienAttackTimer.Update()
+
+		// Is the timer reached? If so, reset the timer and attack.
+		if g.alienAttackTimer.IsReady() {
+			g.alienAttackTimer.Reset()
+
+			for _, a := range g.aliens {
+				bounds := a.sprite.Bounds()
+				halfW := float64(bounds.Dx()) / 2
+				halfH := float64(bounds.Dy()) / 2
+
+				var degreesRadian float64
+
+				// Is the alien intelligent?
+				if !a.isIntelligent {
+					// Fire in a random direction.
+					degreesRadian = rand.Float64() * (math.Pi * 2)
+				} else {
+					// Fire with some accuracy.
+					degreesRadian = math.Atan2(g.player.position.Y-a.position.Y, g.player.position.X-a.position.X)
+					degreesRadian = degreesRadian - math.Pi*-0.5
+				}
+
+				r := degreesRadian
+
+				offsetX := float64(a.sprite.Bounds().Dx() - int(halfW))
+				offsetY := float64(a.sprite.Bounds().Dy() - int(halfH))
+
+				spawnPos := Vector{
+					X: a.position.X + halfW + math.Sin(r) - offsetX,
+					Y: a.position.Y + halfH + math.Cos(r) - offsetY,
+				}
+
+				laser := NewAlienLaser(spawnPos, r)
+				g.alienLaserCount++
+				g.alienLasers[g.alienLaserCount] = laser
+				if !g.alienLaserPlayer.IsPlaying() {
+					_ = g.alienLaserPlayer.Rewind()
+					g.alienLaserPlayer.Play()
+				}
+			}
+		}
+	}
+}
+
+func (g *GameScene) removeOffscreenLasers() {
+	for i, l := range g.lasers {
+		if l.position.X > ScreenWidth+200 || l.position.Y > ScreenHeight+200 || l.position.X < -200 || l.position.Y < -200 {
+			g.space.Remove(l.laserObj)
+			delete(g.lasers, i)
+		}
+	}
+
+	for i, l := range g.alienLasers {
+		if l.position.X > ScreenWidth+200 || l.position.Y > ScreenHeight+200 || l.position.X < -200 || l.position.Y < -200 {
+			g.space.Remove(l.laserObj)
+			delete(g.alienLasers, i)
+		}
+	}
+}
+
+func (g *GameScene) spawnAliens() {
+	g.alienSpawnTimer.Update()
+	if len(g.aliens) == 0 {
+		if g.alienSpawnTimer.IsReady() {
+			g.alienSpawnTimer.Reset()
+			rnd := rand.Intn(100-1) + 1
+			if rnd > 50 {
+				a := NewAlien(baseAlienVelocity, g)
+				g.space.Add(a.alienObj)
+				g.alienCount++
+				g.aliens[g.alienCount] = a
+			}
+		}
+	}
+}
+
+func (g *GameScene) removeOffscreenAliens() {
+	for i, a := range g.aliens {
+		if a.position.X > ScreenWidth+200 || a.position.Y > ScreenHeight+200 || a.position.X < -200 || a.position.Y < -200 {
+			g.space.Remove(a.alienObj)
+			delete(g.aliens, i)
+		}
+	}
 }
 
 func (g *GameScene) updateShield() {
@@ -374,7 +576,7 @@ func (g *GameScene) isPlayerDead(state *State) {
 		g.player.livesRemaining--
 		if g.player.livesRemaining == 0 {
 
-			// New high Score?
+			// New High Score?
 			if g.score > originalHighScore {
 				err := updateHighScore(g.score)
 				if err != nil {
@@ -397,6 +599,7 @@ func (g *GameScene) isPlayerDead(state *State) {
 			shieldIndicatorSlice := g.player.shieldIndicators
 
 			g.Reset()
+
 			g.player.livesRemaining = livesRemaining
 			g.score = score
 			g.player.lifeIndicators = lifeSlice
@@ -474,6 +677,13 @@ func (g *GameScene) cleanUpMeteorsAndAliens() {
 				g.space.Remove(m.meteorObj)
 			}
 		}
+
+		for i, a := range g.aliens {
+			if a.sprite == g.explosionSprite {
+				delete(g.aliens, i)
+				g.space.Remove(a.alienObj)
+			}
+		}
 		g.cleanUpTimer.Reset()
 	}
 }
@@ -495,4 +705,8 @@ func (g *GameScene) Reset() {
 	g.stars = GenerateStars(numberOfStars)
 	g.player.shieldsRemaining = numberOfShields
 	g.player.isShielded = false
+	g.aliens = make(map[int]*Alien)
+	g.alienCount = 0
+	g.alienLasers = make(map[int]*AlienLaser)
+	g.alienLaserCount = 0
 }
